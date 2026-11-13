@@ -92,47 +92,54 @@
 
   /* ---- Commute panel ---- */
   #panel {
-    position: absolute; left: 16px; bottom: 16px; z-index: 1000;
-    width: 300px; color: #fff;
+    position: absolute; left: 24px; bottom: 24px; z-index: 1000;
+    width: clamp(340px, 36vw, 460px); color: #fff;
     background: rgba(17,17,17,.94); border-radius: 6px;
     box-shadow: 0 4px 20px rgba(0,0,0,.55); overflow: hidden;
   }
   .tabs { display: flex; border-bottom: 1px solid #333; }
   .tab {
-    flex: 1; padding: 11px 8px; background: none; border: none; cursor: pointer;
-    color: #8a8a8a; font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1.3;
+    flex: 1; padding: 16px 12px; background: none; border: none; cursor: pointer;
+    color: #8a8a8a; font-family: inherit; font-size: 15px; font-weight: 700; line-height: 1.3;
     transition: color .15s;
   }
   .tab:hover { color: #ccc; }
   .tab.active { color: #fff; box-shadow: inset 0 -3px 0 #fff; }
-  .pbody { padding: 14px 16px 16px; }
-  .total { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
-  .total .num { font-size: 36px; font-weight: 700; line-height: 1; }
-  .total .lbl { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: .07em; }
-  .steps { list-style: none; margin: 0 0 14px; padding: 0; }
+  .pbody { padding: 22px 26px 26px; }
+  .total { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  .total .num { font-size: 60px; font-weight: 700; line-height: 1; }
+  .total .lbl { font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: .07em; }
+  .steps { list-style: none; margin: 0 0 22px; padding: 0; }
   .steps li {
     display: flex; gap: 10px; align-items: center;
-    padding: 5px 6px; margin: 0 -6px; border-radius: 4px;
-    font-size: 13px; line-height: 1.35; color: #ddd; transition: background .15s;
+    padding: 8px 8px; margin: 0 -8px; border-radius: 4px; gap: 14px;
+    font-size: 16px; line-height: 1.4; color: #ddd; transition: background .15s;
   }
   .steps li:hover { background: rgba(255,255,255,.06); color: #fff; }
-  .sw { flex: 0 0 24px; height: 0; }
+  .sw { flex: 0 0 32px; height: 0; }
   .sw.walk { border-top: 3px dotted #fff; }
   .sw.ride { border-top: 5px solid #bdbdbd; border-radius: 3px; }
-  .stops-h { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .stops-h { font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
     background: #222; border: 1px solid #3a3a3a; color: #fff; border-radius: 999px;
-    padding: 5px 10px; font-family: inherit; font-size: 12px; cursor: pointer;
+    padding: 8px 14px; font-family: inherit; font-size: 14px; cursor: pointer;
     transition: border-color .15s;
   }
   .chip:hover, .chip:focus-visible { border-color: #fff; outline: none; }
 
   @media (max-width: 640px) {
     #panel { left: 8px; right: 8px; bottom: 26px; width: auto; }
+    .tab { padding: 11px 8px; font-size: 12px; }
     .pbody { padding: 10px 12px 12px; }
+    .total { gap: 8px; margin-bottom: 10px; }
     .total .num { font-size: 28px; }
+    .total .lbl { font-size: 11px; }
     .steps { margin-bottom: 10px; }
+    .steps li { font-size: 13px; padding: 5px 6px; margin: 0 -6px; gap: 10px; }
+    .sw { flex-basis: 24px; }
+    .stops-h { font-size: 11px; margin-bottom: 8px; }
+    .chip { padding: 5px 10px; font-size: 12px; }
   }
 </style>
 </head>
@@ -159,7 +166,7 @@
   var ACCENT = '#bdbdbd';  // ride line (grey)
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var map = L.map('map', { zoomControl: true, scrollWheelZoom: false });
+  var map = L.map('map', { zoomControl: true, scrollWheelZoom: false, zoomSnap: 0.25, zoomDelta: 0.5 });
   map.createPane('stations'); map.getPane('stations').style.zIndex = 450;
   map.createPane('traveler'); map.getPane('traveler').style.zIndex = 460;
 
@@ -275,7 +282,7 @@
     { name: '4th & Brannan',       ll: [37.77775, -122.39607] },
     { name: '4th & King',          ll: [37.77530, -122.39330], label: 'left' },
     { name: 'Mission Rock',        ll: [37.7729639, -122.3896722] },
-    { name: 'UCSF/Chase Center',   ll: [37.76882, -122.38929], label: 'right' }
+    { name: 'UCSF/Chase Center',   ll: [37.76882, -122.38929], label: 'left' }
   ];
   stations.forEach(function (s) {
     var m = L.circleMarker(s.ll, {
@@ -409,8 +416,8 @@
   function fit(animateMove) {
     var narrow = map.getSize().x <= 640;
     var opts = narrow
-      ? { paddingTopLeft: [40, 60], paddingBottomRight: [40, panel.offsetHeight + 40] }
-      : { paddingTopLeft: [panel.offsetWidth + 70, 70], paddingBottomRight: [70, 70] };
+      ? { paddingTopLeft: [56, 64], paddingBottomRight: [56, panel.offsetHeight + 50] }
+      : { paddingTopLeft: [panel.offsetWidth + 50, 40], paddingBottomRight: [130, 40] };
     opts.maxZoom = 16;
     opts.animate = !!animateMove;
     map.fitBounds(allPts, opts);
