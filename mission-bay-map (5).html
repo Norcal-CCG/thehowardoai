@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Howard + Mission Bay</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #1a1a1a; font-family: Helvetica, Arial, sans-serif; }
+  #map { position: absolute; inset: 0; background: #1a1a1a; }
+
+  /* ---- Third Street badge markers ---- */
+  .badge-marker { background: none; border: none; }
+  .badge {
+    position: absolute; left: 50%;
+    width: 44px; height: 44px; margin-left: -22px;
+    border-radius: 50%;
+    background: #111; border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .15s ease;
+  }
+  .badge svg { width: 24px; height: 24px; fill: #fff; }
+  .stem { position: absolute; left: 50%; width: 2px; margin-left: -1px; height: 12px; background: #fff; }
+  .dot  { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff; }
+  .left .badge, .right .badge { top: 50%; margin-top: -22px; }
+  .left .badge  { left: auto; right: calc(50% + 12px); margin-left: 0; }
+  .right .badge { left: calc(50% + 12px); margin-left: 0; }
+  .left .stem, .right .stem { top: 50%; width: 12px; height: 2px; margin: -1px 0 0 0; }
+  .left .stem  { left: auto; right: 50%; }
+  .right .stem { left: 50%; }
+  .badge-marker:hover .badge { transform: scale(1.08); }
+
+  /* ---- The Howard marker ---- */
+  .natoma-marker { background: none; border: none; }
+  .natoma {
+    width: 64px; height: 47px; border-radius: 4px;
+    background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .15s ease;
+  }
+  .natoma svg { width: 54px; height: 40px; }
+  .natoma-tail {
+    width: 0; height: 0; margin: 0 auto;
+    border-left: 7px solid transparent; border-right: 7px solid transparent;
+    border-top: 9px solid #fff;
+  }
+  .natoma-marker:hover .natoma { transform: scale(1.06); }
+
+  /* ---- Stops along the way ---- */
+  .poi-marker { background: none; border: none; }
+  .poi {
+    position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 10px; border-radius: 999px;
+    background: #111; border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.55);
+    transition: transform .15s ease; white-space: nowrap;
+  }
+  .poi svg { display: block; width: auto; }
+  .poi svg * { fill: #fff; }
+  .poi.above { transform: translate(-50%, calc(-100% - 9px)); }
+  .poi.below { transform: translate(-50%, 9px); }
+  .poi-marker:hover .poi.above { transform: translate(-50%, calc(-100% - 9px)) scale(1.08); }
+  .poi-marker:hover .poi.below { transform: translate(-50%, 9px) scale(1.08); }
+  .poi-dot { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid #111; box-sizing: border-box; }
+
+  /* ---- Station labels ---- */
+  .station-label {
+    background: transparent; border: none; box-shadow: none; padding: 0 4px;
+    color: #e6e6e6; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 3px #000;
+  }
+  .station-label::before { display: none; }
+
+  /* ---- Popups ---- */
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+    background: #111; color: #fff; border-radius: 4px;
+    box-shadow: 0 3px 14px rgba(0,0,0,.6);
+  }
+  .leaflet-popup-content { margin: 12px 16px; font: 14px/1.4 Helvetica, Arial, sans-serif; }
+  .leaflet-popup-content strong { display: block; font-size: 15px; margin-bottom: 2px; }
+  .leaflet-popup-content .sub { color: #aaa; font-size: 13px; }
+  .leaflet-container a.leaflet-popup-close-button { color: #aaa; }
+  .leaflet-control-attribution { background: rgba(0,0,0,.55) !important; color: #888; }
+  .leaflet-control-attribution a { color: #aaa; }
+
+  /* ---- Commute panel ---- */
+  #panel {
+    position: absolute; left: 16px; bottom: 16px; z-index: 1000;
+    width: 300px; color: #fff;
+    background: rgba(17,17,17,.94); border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.55); overflow: hidden;
+  }
+  .tabs { display: flex; border-bottom: 1px solid #333; }
+  .tab {
+    flex: 1; padding: 11px 8px; background: none; border: none; cursor: pointer;
+    color: #8a8a8a; font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1.3;
+    transition: color .15s;
+  }
+  .tab:hover { color: #ccc; }
+  .tab.active { color: #fff; box-shadow: inset 0 -3px 0 #fff; }
+  .pbody { padding: 14px 16px 16px; }
+  .total { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .total .num { font-size: 36px; font-weight: 700; line-height: 1; }
+  .total .lbl { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: .07em; }
+  .steps { list-style: none; margin: 0 0 14px; padding: 0; }
+  .steps li {
+    display: flex; gap: 10px; align-items: center;
+    padding: 5px 6px; margin: 0 -6px; border-radius: 4px;
+    font-size: 13px; line-height: 1.35; color: #ddd; transition: background .15s;
+  }
+  .steps li:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .sw { flex: 0 0 24px; height: 0; }
+  .sw.walk { border-top: 3px dotted #fff; }
+  .sw.ride { border-top: 5px solid #bdbdbd; border-radius: 3px; }
+  .stops-h { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: #222; border: 1px solid #3a3a3a; color: #fff; border-radius: 999px;
+    padding: 5px 10px; font-family: inherit; font-size: 12px; cursor: pointer;
+    transition: border-color .15s;
+  }
+  .chip:hover, .chip:focus-visible { border-color: #fff; outline: none; }
+
+  @media (max-width: 640px) {
+    #panel { left: 8px; right: 8px; bottom: 26px; width: auto; }
+    .pbody { padding: 10px 12px 12px; }
+    .total .num { font-size: 28px; }
+    .steps { margin-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel">
+  <div class="tabs" role="tablist">
+    <button class="tab active" role="tab" data-dir="h2m">The Howard &rarr; Mission Bay</button>
+    <button class="tab" role="tab" data-dir="m2h">Mission Bay &rarr; The Howard</button>
+  </div>
+  <div class="pbody">
+    <div class="total"><span class="num" id="total"></span><span class="lbl">minutes<br>door to door</span></div>
+    <ul class="steps" id="steps"></ul>
+    <div class="stops-h">Stop along the way</div>
+    <div class="chips" id="chips"></div>
+  </div>
+</div>
+
+<script>
+  var knotLogo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="1.68 1.75 16.65 16.5"><path d="M11.248 18.25q-.825 0-1.568-.314a4.3 4.3 0 0 1-1.32-.874 4 4 0 0 1-1.304.214 4 4 0 0 1-2.046-.544 4.27 4.27 0 0 1-1.518-1.485 4 4 0 0 1-.56-2.095q0-.48.131-1.04A4.4 4.4 0 0 1 2.04 10.71a4.07 4.07 0 0 1 .017-3.4 4.2 4.2 0 0 1 1.056-1.418 3.8 3.8 0 0 1 1.6-.842 3.9 3.9 0 0 1 .76-1.683q.593-.759 1.451-1.188a4.04 4.04 0 0 1 1.832-.429q.825 0 1.567.313.742.314 1.32.875a4 4 0 0 1 1.304-.215q1.106 0 2.046.545a4.14 4.14 0 0 1 1.501 1.485q.578.941.578 2.095 0 .48-.132 1.04.66.61 1.023 1.419.363.792.363 1.666 0 .892-.38 1.717a4.3 4.3 0 0 1-1.072 1.435 3.8 3.8 0 0 1-1.584.825 3.8 3.8 0 0 1-.775 1.683 4.06 4.06 0 0 1-1.436 1.188 4.04 4.04 0 0 1-1.832.429m-4.076-2.062q.825 0 1.435-.347l3.103-1.782a.36.36 0 0 0 .164-.313v-1.42L7.881 14.62a.67.67 0 0 1-.726 0l-3.118-1.798a.5.5 0 0 1-.017.115v.198q0 .841.396 1.551.413.693 1.139 1.089a3.2 3.2 0 0 0 1.617.412m.165-2.69a.4.4 0 0 0 .181.05q.083 0 .165-.05l1.238-.71-3.977-2.31a.7.7 0 0 1-.363-.643v-3.58q-.825.362-1.32 1.122a2.9 2.9 0 0 0-.495 1.65q0 .809.413 1.55.412.743 1.072 1.123zm3.91 3.663q.875 0 1.585-.396a2.96 2.96 0 0 0 1.534-2.64v-3.564a.32.32 0 0 0-.165-.297l-1.254-.726v4.604a.7.7 0 0 1-.363.643l-3.119 1.799a3 3 0 0 0 1.783.577m.627-6.039V8.878L10.01 7.822 8.129 8.878v2.244l1.881 1.056zM7.057 5.859a.7.7 0 0 1 .363-.644l3.119-1.798a3 3 0 0 0-1.782-.578q-.874 0-1.584.396A2.96 2.96 0 0 0 6.05 4.324a3.07 3.07 0 0 0-.396 1.551v3.547q0 .199.165.314l1.237.726zm8.383 7.887q.825-.364 1.303-1.123.495-.758.495-1.65a3.15 3.15 0 0 0-.412-1.55q-.413-.743-1.073-1.123l-3.086-1.782q-.099-.065-.181-.049a.3.3 0 0 0-.165.05l-1.238.692 3.993 2.327a.6.6 0 0 1 .264.264.64.64 0 0 1 .1.363zm-3.317-8.382a.63.63 0 0 1 .726 0l3.135 1.831v-.297q0-.792-.396-1.501a2.86 2.86 0 0 0-1.105-1.155q-.71-.43-1.65-.43-.825 0-1.436.347L8.294 5.941a.36.36 0 0 0-.165.314v1.418z"/></svg>';
+  var natomaLogo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 204 150"><path d="M186,132H18V18h168v114ZM24,126h156V24H24v102Z" fill="#1a1a1a"/><path d="M204,150H0V0h204v150ZM6,144h192V6H6v138Z" fill="#1a1a1a"/><path d="M79.53,101.25v-52.49h-15.67v52.49c0,5.37-1.86,6.25-8.66,7.12v2.63h32.99v-2.63c-6.79-.88-8.66-1.75-8.66-7.12ZM148.14,39v28.05h-24.66v13.59h24.66v30.36h16.66V39h-16.66ZM118,39v72h-16.66v-52.16c0-8.66-5.15-15.12-19.29-15.12h-20.6c-6.36,0-12.82.77-16.22,8.88l-3.07,7.34h-2.96v-20.93h78.79Z" fill="#1a1a1a"/></svg>';
+
+  var ACCENT = '#bdbdbd';  // ride line (grey)
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var map = L.map('map', { zoomControl: true, scrollWheelZoom: false });
+  map.createPane('stations'); map.getPane('stations').style.zIndex = 450;
+  map.createPane('traveler'); map.getPane('traveler').style.zIndex = 460;
+
+  // Mapbox base map. For the light/monochrome version, change "dark-v11" to "light-v11".
+  var MAPBOX_TOKEN = 'pk.eyJ1IjoibGh1ZmZtYW5jYnJlIiwiYSI6ImNtd2V0amczdzAwb2IyenEyZDhob2kyZTMifQ.TmF1b3tvKVBnsahw0t4QrQ';
+  var MAPBOX_STYLE = 'mapbox/dark-v11';
+  L.tileLayer('https://api.mapbox.com/styles/v1/' + MAPBOX_STYLE + '/tiles/{z}/{x}/{y}?access_token=' + MAPBOX_TOKEN, {
+    attribution: '&copy; <a href="https://www.mapbox.com/about/maps/" target="_blank">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+    tileSize: 512, zoomOffset: -1, maxZoom: 20
+  }).addTo(map);
+
+  // Scroll-zoom only after a click, so the map doesn't hijack page scrolling in Ceros
+  map.on('click', function () { map.scrollWheelZoom.enable(); });
+  map.getContainer().addEventListener('mouseleave', function () { map.scrollWheelZoom.disable(); });
+
+  /* ================= Properties ================= */
+  var places = [
+    { name: '1455 Third Street', addr: 'San Francisco, CA 94158', lat: 37.77019982786118, lng: -122.38920744353938, type: 'knot', dir: 'left' },
+    { name: '1515 Third Street', addr: 'San Francisco, CA 94158', lat: 37.77019227021895, lng: -122.38857875520782, type: 'knot', dir: 'right' },
+    { name: 'The Howard', addr: '415 Natoma Street, San Francisco, CA 94103', lat: 37.78155640623101, lng: -122.40578608615195, type: 'natoma' }
+  ];
+  places.forEach(function (p) {
+    var icon = p.type === 'knot'
+      ? L.divIcon({
+          className: 'badge-marker ' + p.dir,
+          html: '<div class="dot"></div><div class="stem"></div><div class="badge">' + knotLogo + '</div>',
+          iconSize: [2, 2], iconAnchor: [1, 1],
+          popupAnchor: [p.dir === 'left' ? -34 : 34, -26]
+        })
+      : L.divIcon({
+          className: 'natoma-marker',
+          html: '<div class="natoma">' + natomaLogo + '</div><div class="natoma-tail"></div>',
+          iconSize: [64, 56], iconAnchor: [32, 56], popupAnchor: [0, -56]
+        });
+    L.marker([p.lat, p.lng], { icon: icon, title: p.name, zIndexOffset: 1000 })
+      .addTo(map)
+      .bindPopup('<strong>' + p.name + '</strong><span class="sub">' + p.addr + '</span>');
+  });
+
+  /* ================= Route geometry ================= */
+  // Walk: The Howard -> east on Natoma -> down 5th St (past Seiyun) -> east on Folsom -> Yerba Buena/Moscone station
+  var walkHoward = [
+    [37.78155640623101, -122.40578608615195], [37.781919, -122.405327], [37.78083105405632, -122.40395207258824],
+    [37.780242, -122.403207], [37.78206, -122.40091]
+  ];
+  // T Third: 4th St (subway + surface) -> 4th & King -> 4th St Bridge -> Channel St -> 3rd St -> UCSF/Chase Center
+  var rideT = [
+    [37.78206, -122.40091], [37.77775, -122.39607], [37.77590, -122.39400], [37.77530, -122.39330],
+    [37.77340, -122.39120], [37.77385, -122.39040], [37.77370, -122.38972], [37.7729639, -122.3896722],
+    [37.76882, -122.38929]
+  ];
+  // Walk: UCSF/Chase Center station -> the Third Street buildings
+  var walkMB = [[37.76882, -122.38929], [37.77019, -122.38925], [37.77019, -122.38889]];
+
+  function rev(a) { return a.slice().reverse(); }
+
+  var DIRS = {
+    h2m: {
+      total: '23',
+      steps: [
+        { text: '4.5-minute walk to the Yerba Buena/Moscone Muni station', seg: 0 },
+        { text: '15 minutes to King Street stop', seg: 1 }
+      ],
+      // minutes per leg drive the animation timing (last leg = remainder of door-to-door)
+      segs: [
+        { kind: 'walk', min: 4.5, pts: walkHoward },
+        { kind: 'ride', min: 15,  pts: rideT },
+        { kind: 'walk', min: 3.5, pts: walkMB }
+      ]
+    },
+    m2h: {
+      total: '15',
+      steps: [
+        { text: '2.5-minute walk to Muni', seg: 0 },
+        { text: '11 minutes to Yerba Buena/Moscone station', seg: 1 }
+      ],
+      segs: [
+        { kind: 'walk', min: 2.5, pts: rev(walkMB) },
+        { kind: 'ride', min: 11,  pts: rev(rideT) },
+        { kind: 'walk', min: 1.5, pts: rev(walkHoward) }
+      ]
+    }
+  };
+
+  /* ================= Stations ================= */
+  var stations = [
+    { name: 'Yerba Buena/Moscone', ll: [37.78206, -122.40091], label: 'right' },
+    { name: '4th & Brannan',       ll: [37.77775, -122.39607] },
+    { name: '4th & King',          ll: [37.77530, -122.39330], label: 'left' },
+    { name: 'Mission Rock',        ll: [37.7729639, -122.3896722] },
+    { name: 'UCSF/Chase Center',   ll: [37.76882, -122.38929], label: 'right' }
+  ];
+  stations.forEach(function (s) {
+    var m = L.circleMarker(s.ll, {
+      pane: 'stations', radius: 5, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1
+    }).addTo(map);
+    m.bindTooltip(s.name + ' station', {
+      permanent: !!s.label, direction: s.label || 'top', offset: s.label === 'left' ? [-6, 0] : (s.label ? [6, 0] : [0, -6]),
+      className: 'station-label'
+    });
+  });
+
+  /* ================= Stops along the way ================= */
+  var stops = [
+    { name: 'Seiyun Coffee',            chip: 'Seiyun',        pos: 'below', logoH: 15, logo: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 937.18 313.66"><g><path d="M826.35,221.24c-.01,10.75,12.76,20.58,2.78,21.13l-13.1.73-42.26.02c-3.04,0-9.17-2.88-7.3-6.38,2.94-5.51,5.71-9.71,5.71-16.38l-.04-123.88-6.95-8.46c-.99-1.21-.4-4.55.44-5.75,1.24-1.76,3.97-3,6.38-2.99l55.13.03c2.2,0,4.99,2.95,3.63,4.54-2.68,3.15-5.61,6.52-5.52,10.55l.33,13.87c12.86-24.37,30.52-35.82,57.53-31.87,23.52,3.44,44.58,21.13,44.73,46.21l.64,103.63c.03,4.7,8.92,7,8.65,12.5-.07,1.33-2.67,3.7-4.08,3.7l-51.78-.25c-5.29-.03-8.12-7.26-8.12-11.72l-.05-113.85c0-3.74-1.72-8.81-3.41-11.66-2.9-4.88-9.26-6.23-14.59-5.55-13.3,1.69-28.62,19.94-28.63,27.26l-.11,94.58Z" fill="#fff"/><path d="M744.26,216.84c0,7.15,7.43,11.33,11.63,14.49l2.23,1.68c2.04,1.53-5.63,6.38-9.97,6.37l-54.6-.08c-3.61,0-6.29-3.75-5.26-6.51,2.64-7.07,4.07-14.92,3.29-21.71-9.92,16.42-23.9,28.33-42.6,31.09l-18.67.07c-21.7-4.16-36.72-21.04-40.28-43.1l-.08-107.05c-3.98-2.17-6.92-6.43-4.42-10.66,2.29-1.39,7.19-2.04,10.51-1.98l45.72.05,5.13,3.02c1.33.78-.85,4.91-1.81,6.47l.13,114.03c0,6.65,5.56,13.59,10.7,14.92,19.26,5.01,32.98-18.25,33-25.57l.3-97.77-4.7-6.58c-.86-1.21-1.95-4.52-1.02-5.55s3.22-2.04,5.22-2.92l54.28-.13c1.3.59,3.42,1.73,4.16,2.53,2.27,2.47-3,8.45-2.99,12.6l.1,122.29Z" fill="#fff"/><path d="M441.65,299.05c13.84.38,23.37-16.07,29.56-29.4,5.31-11.43,5.25-22.77,1.38-34.79-12.71-39.48-28.47-77.37-47.5-114.18-7.19-13.21-14.28-25.07-23.52-36.81l-.04-3.47c-.01-.96,2.48-1.89,3.54-2.1h57.1c2.48.56,5.86,2.64,6.95,5.35l38.29,94.89c9.56-19.07,15.57-36.55,21.44-55.27l3.88-17.85c2.11-9.71-4.28-17.76-13.57-21.69,2.75-4.84,7.75-5.94,12.56-5.95l41.72-.02c1.35,0,4.01,1.3,4.36,2.4s-.42,3.76-1.53,4.75c-8.93,7.96-16.23,18.06-21.53,29.13l-18.48,38.6c-16.38,34.22-29.74,68.87-42.15,104.7-8.75,25.24-30.25,54.3-57.88,56.18-12.31.84-23.74-2.3-32.9-10.36-7.47-6.57-10.3-15.56-9.12-25.99,1.87-16.57,19.18-26.79,38.21-22.96,8.12,1.63,16.64,11.42,11.68,19.46-2.9,4.71-10.65,6.51-11.03,13.84-.29,5.61,1.82,11.34,8.57,11.52Z" fill="#fff"/><path d="M73.67,242.7l-8.53-.02c-24.4-.04-53.27-8.16-62.99-31.38-3.87-9.25-2.65-19.91,4.77-27.06,11.28-10.88,37.76-11.57,45.99,2.29,3.17,5.34,2.52,10.84-2.77,14.02-4.65,2.79-7.18,8.25-7.12,13.4.17,16.31,25.03,22.1,41.7,14.15,7.08-3.37,10.14-10.72,10.94-17.41.91-7.55-2.41-14.33-8.46-19.48-21.41-18.23-46.78-21.45-62.88-34.94-12.95-10.85-20.26-27.19-16.24-43.99,2.53-10.57,10.89-18.46,20.08-23.78,31.78-18.38,104.43-15.42,110.54,22.18,2.25,13.86-8.6,26.95-22.38,27.68-7.71.41-14.6-.47-21.09-4.11-8-4.49-12.24-15.74-6.89-23.38,2.74-3.91,5.52-6.97,4.66-11.8-.66-3.71-3.44-8.04-7.95-9.8-7.94-3.09-17.92-.6-23.74,5.73-5.36,5.83-8.64,15.82-4.29,23.58,7.8,13.92,29.54,23.04,45.38,29.51,11.9,4.86,23.03,10.8,31.63,20.29,8.88,9.79,13.93,22.72,10.49,35.63-7.78,29.17-41.5,38.73-70.86,38.67Z" fill="#fff"/><path d="M237.13,210.49c31.5,15.63,52.22,4.28,76.16-19.41-3.44,19.32-16.77,34.48-34.24,42.43-15.41,7.01-32.56,10.57-49.45,8.34-31.3-4.14-58.76-18.38-68.62-49.26-2.96-9.28-4.28-18.44-5.29-28.14-3.31-31.72,12.14-60.35,40.05-75.59,23.69-12.94,68.32-12.78,91.23,1.74,12.2,7.74,20.58,20.91,18.88,35.78-4.12,35.9-58.43,50.59-91.84,54.22,4.18,12.53,11.88,22.88,23.14,29.89ZM210.37,168.67c13.79-.42,24.85-6.18,33.57-15.51,12.62-14.5,20.51-43.81,8.77-56.36-8.71-9.32-23.07-7.49-30.94,2.43-13.28,16.72-13.54,36.25-12.18,57.43l.77,12Z" fill="#fff"/><path d="M387.21,242.57l-47.14.77c-5.11.08-10.84-.31-15.32-2.54-2.78-5.13,5.33-9.89,5.33-14.53l.05-129.77-4.34-4.89c-1.38-1.55-3.06-4.52-2.77-6.58.27-1.92,3.05-4.2,5.48-5.69l54.53-.06,3.48,2.42c2.47,1.72-2.52,6.14-2.52,12.82v126.83c.01,6.88,2.91,12.15,8.22,16.58-.09,1.54-3.07,4.61-5.01,4.64Z" fill="#fff"/><path d="M360.98,52.19c-2.91,2.92-6.85,2.75-9.6,0l-20.5-20.56c-2.36-2.37-2.44-6.97-.03-9.38l21.13-21.11c1.37-1.37,6.01-1.36,7.74-.67l22.82,22.78c.7,1.49,1.2,6.12-.13,7.45l-21.43,21.5Z" fill="#fff"/><path d="M842.43,279.33l-.14,23.05c-.38.8-2.8,1.19-4.92,1.16l-.28-23.94c-1.3-.68-4.71-2.94-3.93-3.54l3.25-2c1.48-.91.21-5.95,4.21-9.99,1.69-1.7,5.71-1.97,8.47-1.69v3.71c-2.22.46-4.95,1.05-5.6,2.27-.68,1.3-1.05,3.88-1.33,6.09l11.13-.02c-.75-5.78,1.76-12.99,7.62-13.02l3.77-.02c.93,0,.92,3.22.09,3.53-1.88.69-4.78,1.76-5.65,3.08-.97,1.47-1.08,6.31.1,6.48l5.35.1c1.16.02.9,3.81.38,4.53l-6.53.28-.04,24.17-5.17-.09.02-24.16h-10.79Z" fill="#fff"/><path d="M612.05,303.4l-5.09.23-.14-20.13c-.02-2.57-3.12-5.52-5.05-5.15-3.36.64-4.91,2.78-4.88,5.91l.14,19.23-5.07-.03.1-28.91c1.78-.45,3.85.99,4.49,2.53,1.75-1.12,4.78-2.83,7.14-3.25,2.09-.37,5.06,2.72,6.35,4.87,2.57-3.08,5.78-5.31,9.18-4.84s7.4,3.92,7.48,7.96l.4,21.65-5.06.06-.27-20.87c-.02-1.92-3.45-4.6-5.18-4.36-1.89.26-4.6,2.87-4.59,4.9l.04,20.21Z" fill="#fff"/><path d="M817.02,300.76c-2.92,3.57-7.89,4.5-11.78,3.3-3.39-1.04-7.18-4.08-8.36-8.46-2.64-9.8.22-19.63,9.45-21.61,4.19-.9,9.39,1.09,12,5.37,3.79,6.22,3.65,15.33-1.31,21.4ZM815.22,292.55v-7.25c0-3.5-2.49-6.49-5.7-6.89s-6.37,1.45-7.54,5.03c-1.09,3.33-1.06,7.74-.06,11.1,1.16,3.9,4.26,5.37,7.74,5.08,3.16-.26,5.56-3.42,5.56-7.08Z" fill="#fff"/><path d="M894.49,298.72l3.18-1.39c.55-.24,1.92,1.09,1.77,1.68-.21.78-1.16,2.4-2.09,3.1-4.42,3.29-12.82,3.49-16.76-2.15-4.18-5.97-4.5-14.56-.7-20.61s11.85-7.51,16.92-2.51c3.06,3.02,3.9,8.27,3.6,12.55l-17.79.2c-.08,2.5.77,6.31,2.2,7.96,2.07,2.38,7.04,2.33,9.67,1.18ZM895.57,285.49c.04-5.55-3.11-7.3-6.98-7.18-3.04.09-5.52,3.27-5.65,7.22l12.63-.04Z" fill="#fff"/><path d="M659.74,298.33l2.7-1.12c.53-.22,1.76,2.14,1.5,2.67-1.29,2.61-6.66,5.17-10.22,4.71s-7.74-2.58-9.58-6.08c-2.95-5.62-3.01-11.99-.65-17.65,2.68-6.42,10.6-9.2,16.36-5.14,4.26,3.01,5.58,8.51,5.14,13.69l-18.07.14c.2,2.97,1.27,6.89,3.09,8.51,2.6,2.31,6.82,1.47,9.72.27ZM660.28,285.47c-.02-5.75-3.44-7.56-7.62-7.07-2.63.31-4.96,3.37-5.61,7.14l13.23-.07Z" fill="#fff"/><path d="M922.22,298.1c4.77,4.41,11.53-1.98,13.64.15,3,3.02-7.16,8.83-14.72,4.94-4.06-2.09-6.1-6.47-6.87-11.86-1.15-8.06,3.02-16.97,11.9-17.36,7.94-.35,12.57,8.83,10.52,15.48l-17.26.19c.14,3.43,1.09,6.89,2.79,8.46ZM932.51,285.5c.18-5.78-4.01-7.91-7.43-7.04-2.51.64-5.52,3.55-5.58,7.06l13.01-.02Z" fill="#fff"/><path d="M569.8,298.93l3.68-1.39c.67-.25,1.81,1.4,2.58,2.44-3.04,3.25-8.21,5.5-13.08,4.2-9.72-2.59-11.78-17.57-7.19-24.81,3.95-6.23,11.93-7.63,16.89-2.56,3.27,3.33,4.01,7.97,3.35,12.6l-17.38.16c-.11,2.6.73,6.27,2.1,8.05,1.85,2.38,6.47,2.29,9.05,1.31ZM571.91,285.56c-.08-4.7-2.52-7.37-6.35-7.35s-6.67,2.89-6.72,7.3l13.07.05Z" fill="#fff"/><path d="M685.49,281.1l-.51,22.42-4.94-.05.02-28.84c1.19-.16,3.4-.36,3.87.27l1.69,2.27c2.77-2.16,6.33-3.78,9.34-3.19,2.89.57,6.77,4.24,6.83,7.77l.4,21.85-5.06-.12-.17-19.85c-.02-1.79-2.23-4.63-3.67-5.17-1.62-.61-5.52.99-7.79,2.63Z" fill="#fff"/><path d="M541.4,275.37l-13.85,37.31c-.4,1.07-4.6.84-4.9-.09l3.99-10.73-10.06-26.71c1.12-.93,4.81-.84,5.34.5l7.5,19.23,6.94-19.19c.51-1.41,4.4-1.59,5.05-.32Z" fill="#fff"/><path d="M770.33,298.15c1.65,2.15,6.48,1.34,8.51.39l2.69-1.25c.71-.33,1.7,2.5,1.14,3.21-3.22,4.04-12.13,6.23-16.37.71-4.77-6.21-5.56-14.37-1.79-21.47,1.71-3.21,5.18-5.48,8.6-5.94s7.69,1.61,9.97,3.89l-.98,2.23c-.77,1.76-9.92-5.16-12.93,1.51-2.37,5.25-3.03,11.28,1.16,16.73Z" fill="#fff"/><rect x="718.98" y="274.42" width="5.16" height="29.45" fill="#fff"/><path d="M721.05,269.15c-3.76-.73-4.11-5.86-1.52-7.4,1.9-1.13,4.52.45,5.27,2.56.64,1.78-1.47,5.28-3.75,4.84Z" fill="#fff"/></g></svg>', note: 'Turkish coffee',     addr: '260 5th Street',             ll: [37.78083105405632, -122.40395207258824] },
+    { name: 'Flour + Water Pizza Shop', chip: 'Flour + Water', pos: 'above', logoH: 20, logo: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2255.07 972.04"><g><g><g><path d="M1674.17,640.34l-3.97,67.35-20.13,263.37-80.63-.03,26.95-322.62-30.74-.09-75.92,322.74-78.35-.05,153.72-653.16,166.3.34c20.33.04,36.34,13.43,42.59,31.64,7.06,21.43,4.25,47.7-.99,69.96l-33.49,142.2c-8.22,35.06-31.2,66.88-65.35,78.36ZM1687.63,440.81c.94-9.63,0-19.05-2.57-27.82-3.62-10.61-12.15-16.02-22.99-16.05l-31.28-.1-36.49,154.9,37.77-.28c7.13-.05,12.85-5.58,18.25-9.54,22.68-23.84,34.11-68.53,37.31-101.12Z"/><path d="M2172.84,712.06l-104.09-.2-109.51,259.82-83.25-.11,275.69-653.74,103.39.07-.06,653.73-86.75.04,4.58-259.6ZM2174.39,627.43l2.72-170.59-72.57,170.65,69.86-.06Z"/><polygon points="1366.59 634.66 1249.73 634.63 1189 892.87 1359.15 892.93 1340.56 972.03 1173.35 971.85 1095.37 971.6 1249.21 317.86 1491.22 317.88 1473.54 393.04 1306.6 393.01 1269.76 549.62 1386.56 549.65 1366.59 634.66"/><path d="M332.07,537.87c-7.57,31.6-29.17,56.8-53.42,76.58-15.52,10.25-31.25,19.64-50.18,19.78l-74.15.53-79.27,336.95-75.05-.17L153.8,317.86l132.67.08c11.18,0,21.07,2.49,31.23,5.7,46.37,17.79,49.24,68.73,38.66,112.84l-24.3,101.39ZM256.74,518.32l19.47-82.77c1.77-7.51.84-15.23-1.01-22.19-4.57-13.13-15.92-20.5-29.58-20.44l-34.42.15-36.83,156.53,35.27.04c10.23.01,19.76-2.59,28.63-7.33,8.89-5.39,15.91-13.08,18.48-23.99Z"/><path d="M846,971.85l-78.09-.22,19.88-79,163.23-282.37c40.05-70.32,78.83-140.21,116.92-213.05l-159.4-.19,19.78-78.93h244.09s-18.64,79.28-18.64,79.28l-272.77,495.49,150.75.07-18.58,79.1-167.17-.19Z"/><path d="M540.12,971.85l-78.38-.22,19.93-79.16,154.49-267.2c43.21-75.21,84.82-150.22,125.6-228.06l-159.39-.17,19.73-78.94,244.02.02-18.72,79.61-272.59,495.15,150.75.08-18.58,79.09-166.86-.18Z"/><polygon points="1892.07 647.09 1820.57 971.57 1737.3 971.59 1890.08 317.85 1973.32 317.93 1892.07 647.09"/><polygon points="454.16 642.61 381.61 971.63 298.34 971.6 451.11 317.92 534.37 317.89 454.16 642.61"/><polygon points="1532.48 2.16 1474.6 137.52 1461.21 137.4 1433.88 75.79 1406.45 137.54 1393.06 137.32 1336.12 2.14 1365.46 2.08 1401.43 86.73 1433.87 17.98 1466.96 86.77 1502.03 2.09 1532.48 2.16"/><path d="M648.81,132.03c-23.15,10.27-49.09,10.29-71.96.85-26.02-10.75-40.89-34.96-41.09-62.75-.2-27.96,14.61-52.29,40.75-63.12,22.61-9.37,48.26-9.32,70.89.06,25.74,10.67,40.58,34.49,40.75,62.05.17,27.32-13.59,51.49-39.33,62.92ZM635.4,107.59c15.18-7.16,23.19-21.37,23.34-37.47.16-17.02-8.69-31.91-24.36-38.97-14.74-6.64-31.72-6.51-46.22.6s-23.14,21.88-22.97,38.38c.17,16.11,8.29,30.25,22.97,37.37,14.74,7.14,31.98,7.31,47.25.1Z"/><path d="M2144.35,137.12l-34.86.48-47.63-58.34-13.65-.06-.05,58.34-28.26-.06V2.07s49.87.21,49.87.21c7.86.03,15.48,3.2,21.74,7.1,8.33,6.35,11.79,15.35,13.02,25.46,1.84,15.08-4.16,29.79-17.68,36.69l57.5,65.59ZM2076.37,40.64c-.01-7.47-4.68-13.43-12.35-13.63l-15.82-.41v28.13s15.97-.36,15.97-.36c7.67-.17,12.21-6.25,12.2-13.73Z"/><path d="M1052.45,137.24l-35.1.28-47.4-58.14-13.62-.14v58.33s-28.4-.06-28.4-.06V2.08s51.07.37,51.07.37c9.68.07,18.51,4.55,24.91,11,14.16,18.15,11.88,46.68-9.01,58.19l57.54,65.6ZM984.37,40.63c-.04-7.85-5.18-13.52-12.73-13.68l-15.29-.31v28.08s15.31-.3,15.31-.3c7.69-.15,12.76-5.79,12.72-13.8Z"/><path d="M868.99,2.09l.06,71.97c-.74,29.19-15.13,54.23-43.63,62.14-15.4,4.28-31.46,4.21-46.84-.16-28-7.95-41.87-32.58-42.97-61.16V2.11s28.22,0,28.22,0l.07,74.25c1.5,11.87,4.94,23.33,15.31,30.06,13.19,8.56,31.45,8.9,45,.45,9.64-6.01,15.79-17.2,15.85-28.84l.4-75.92h28.53Z"/><path d="M1648.87,105.25h-61.1s-16.53,32.33-16.53,32.33l-30.46-.14L1611.74,1.68l13.46.12,70.82,135.53-30.31.33-16.84-32.4ZM1637.98,83.46l-20.11-39.86-19.61,39.95,39.71-.09Z"/><polygon points="1940.96 77.26 1905.97 77.31 1905.94 111.61 1966.79 111.66 1966.63 137.55 1878.01 137.54 1878.01 2.09 1961.43 2.1 1961.46 28.15 1905.96 28.15 1905.97 52.7 1940.94 52.69 1940.96 77.26"/><polygon points="1225.82 137.12 1198.04 137.13 1198.03 83.27 1144.16 83.26 1144.17 55.56 1198.04 55.54 1198.04 1.55 1225.83 1.59 1225.81 55.53 1279.65 55.57 1279.69 83.27 1225.84 83.26 1225.82 137.12"/><polygon points="1782.5 137.3 1754.73 137.54 1754.74 28.16 1705.82 28.15 1705.85 2.1 1831.2 2.1 1831.22 28.16 1782.49 28.14 1782.5 137.3"/><polygon points="342.06 53.22 342.2 78.42 308.86 78.53 308.87 137.56 281.12 137.47 281.1 2.09 364.95 2.1 364.96 27.64 308.89 27.64 308.84 53.24 342.06 53.22"/><polygon points="500.88 111.62 501.01 137.54 414.54 137.55 414.55 2.12 442.47 2.1 442.44 111.62 500.88 111.62"/></g></g></g></svg>', note: 'Pizza',              addr: '1090 Dr. Maya Angelou Lane', ll: [37.77526, -122.38972] },
+    { name: 'Arsicault',                chip: 'Arsicault',     pos: 'below', logoH: 24, logo: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 946.21 475.17"><g><g><path d="M16.55,372.23c10.58-5.89,23.89-8.82,31.15-.24,3.15,3.72,4.54,8.85,3.26,13.66-2.6,9.77-11.16,16.33-21.25,14.99-6.44-.86-10.04-6.18-10.62-13.11-6.63,3.94-10.42,10.47-9.96,17.55s3.7,14.49,11.13,16.74c24.94,7.56,58.1-40.12,71.86-61.81l17.06-26.89c-14.37-3.29-27.95-7.84-40.63-15.37-17.7-10.5-33.25-29.02-32.36-49.67.26-6.07,2.5-11.68,5.06-16.96,7.12-14.66,20.09-25.66,36.58-28.41l9.85-.86c25.85.37,53.99,18.65,68.2,41.37l70.07-103.3,23.09-33.12c19.31-27.71,44.42-55.73,72.56-74.43,3.38-2.25,7.16-3.97,11.38-4.92-14.38,23.47-27.78,46.01-40.08,70.21l-23.34,45.94-69.93,153.24,16.12-11.32c1.69-1.19,2.55-2.28,4.32-2.78,20.03-15.8,38.64-34.74,52.35-57.1l-8.6-3.07c-5.1-9.45-1.91-20.64,7.69-25.25,3.13-1.5,7.73-1.27,9.92.99,1.98,2.04,3.29,6.96,2.03,9.79l-6.26,13.98c5.98-.77,11.45-2.41,17.19-1.02s10.47,7.93,11.94,12.62c1.95,6.21,1.03,13.23-2.97,18.72l-71.09,97.53c-1.84,2.53-4.34,5.23-3.94,8.39.29,2.33,4.12,6.37,6.43,6.94,13.35,3.28,29.76-14.78,39.84-25.74,2.43-2.64,3.19-4,2.84-7.61-1.78-17.99,15.41-42.62,35.48-36.23l57.61-70.23,43.51-52.07.84.92c-2.62,4.55-8.04,8.56-10.45,13.78-4.05,8.78-4.73,18.72-5.48,28.5-2.3,29.77-10.9,56.92-27.53,82.3l19.52-16.13c5.73-4.73,15.38-11.72,18.63-17.28l46.23-78.97,27-4.8-85.54,143.56c5.29,10.42,21.36-3.62,31.46-12.68l22.72-20.37c2.99-25.79,16.88-50.13,31.28-71.58,8.74-13.02,18.09-24.85,29.87-35.14,13.25-11.58,36.6-22.51,47.29-11.15,8.86,9.42,2.95,25.07-6.35,34.24-5.04,4.97-16.09,4.69-18.97-2.88-2.83-7.42,5.55-15.23,12.81-15,4.56.15,7.36,2.51,10.29,5.93,6.48-5.65,6.48-17.79-1.46-22.62-6.47-3.94-16.76-2.43-22.74,2.22l-73.79,133.29c.17,5.2,6.21,8.14,11.19,7.17,6.6-1.28,12.32-5.04,17.31-9.68l17.07-15.87,18.64-19.53,5.28-6.42,9.42-21.74c10.13-19.67,21.02-38.67,36.81-54.16l18.7-18.34c7.72-7.57,16.73-13.18,26.65-17.36,3.86-1.63,8.06-1.41,11.51.67,3.01,1.81,4.8,4.9,6.11,9.48l9.02-15.95,23.87-4.49-80.03,143.19c4.53,2.34,8.33,0,11.74-2.14,1.51-.37,3.91-1.12,5.46-2.06,15.38-9.29,27.36-21.63,38.7-35.36,2.17-2.63,3.2-5.03,4.94-8.15l57.99-103.88,24.56-3.9-77.45,139.94c4.04,3.71,10.53,2.4,15.02-1.06,9.35-7.19,17.68-15.52,25.04-24.6,1.35-6,3.35-10.76,6.1-16.25l56.75-104.25,23.33-3.22-73.46,139.93c15.89-1.33,27.05-10.06,37.11-20.69,4.98-5.26,11.44-10.81,13.86-17.67,4.28-12.13,8.52-23.22,15.04-34.37l38.73-66.23,33.41-55.63c11.05-18.41,24.17-34.65,38.23-50.67l18.97-19.1c8.8-8.86,24.51-21.41,32.98-15.67,9.52,6.45,3.68,25.52-3.9,35.88-13.23,18.09-27.3,34.78-42.81,51.03-15.2,15.92-31.33,29.2-49.8,41.27l-73.18,135.81c9.55,10.54,24.9-4.69,36.28-13.8l27.55-27.51c3.48-10.17,8.29-18.69,13.85-28.1l73.74-129.18,26.22-4.65-27.99,49.87,21.89-2.8c.73-.09,2.61-.77,2.49-.29l-.81,3.25-26.56,5.09-72.93,129.57c-1.26,2.24-1.79,5.03-1.56,7.34,4.65,1.26,9.12,1.31,13.72-.05,25.9-7.67,48.31-23.68,64.58-45.12-12.11-11.91-17.31-25.44-6.11-37.35,1.6-1.7,5.84-3.35,7.8-2.83,6.96,1.84,14.39,15.62,9.73,24.39l-8.02,15.1c6.58,5.82,13.68,12.11,17.57,19.75,4.94,9.7.54,20.17-6.33,27.3-10.42,10.82-21.45,19.2-34.81,26.42-25.84,13.97-53.04,24.29-81.62,32.37-91.72,25.93-182.57,52.56-273.49,81.27-29.58,9.34-58.32,18.82-87.02,29.99l-41.81,19.22c-5.63,2.59-10.43,7.05-14.98,11.04-16.55,2.39-32.79,4.68-48.93,9l-30.02,10.44-1.1-1.11c6.19-9.91,14.08-16.67,23.87-22.66,20.76-12.72,42.84-21.66,66.06-29.91,42.51-15.1,85.11-27.96,128.67-40.24l176.31-49.7,126.7-37.24,57.31-19.81c14.01-4.84,26.02-14.19,35.98-24.72,6.64-7.02,7.17-17.29,1.02-24.36l-5.96-6.86-8.97-8.36c-14.87,19.56-34.01,34.13-56.43,42.99-13,5.13-27.74,7.68-31.74-4.9-2.39-7.51-2.86-18.15-1.57-18.65l-1.67.65-30.56,29.38c-9.37,7.32-22.22,15.94-30.5,9.3-6.03-4.84-8.3-11.73-7.87-19.62l-12.39,13.62c-11.93,13.11-35.94,26.96-46.32,18.32-2.69-2.24-4.41-6.24-5.6-11.16-10.92,11.25-28.54,32.84-40.94,22.94-6.86-5.47-9.2-14-7.78-22.9l-18.2,18.94c-8.62,8.97-19.26,15.44-30.69,20.29-4.19,1.78-8.34.84-11.67-2.26-4.67-4.34-5.83-11.09-5.33-17.91l-20.33,20.88c-4.86,5-11.46,7.97-18.05,9.89-6.22,1.82-12.09-.83-13.93-7.21-1.77-6.14-1.78-12.47-1.93-19.35.49-1.27-.57-2.79-1.37-1.18-12.93,14.44-25.35,27.59-40.08,39.44-3.94,3.17-9.34,5.89-13.95,6.74-7.03,1.29-12.91-1.2-16.09-7.26-2.43-4.64-3.31-10.09-4.26-15.93l-27.27,23.94c-5.42,4.75-11.35,9.36-18.21,11.69-8.32,2.83-16.44-3.6-18.01-11.72-2.01-10.33.9-19.8,6.88-28.52,1.32-1.93,2.1-4.63,2.37-6.84,1.47-1.85,3.55-4.09,4.46-6.49l-35.99,29.33c-8.39,10.76-17.45,20.3-27.49,29.53-7.75,6.22-15.66,11.69-24.83,15.15-13.93,5.24-28.72.55-35.32-12.76-11.14,12.57-29.29,32.99-44.31,28.55-6.48-1.92-10.38-8.71-11.66-15.16-3.55-17.77,7.88-35.21,18.65-50.24l17.95-25.05,24.97-33.02c3.81-5.04,7.09-9.71,9.4-15.89.84-2.24-2.96-5.66-5.25-5.21l-12.66,2.51c-19.39,31.72-48.02,55.73-78.01,76.97l-36.05,82.06-29.03,4.36,33.43-70.28.84-1.76c.22-.47-.65-.68-1.7-.66-17.93,1.59-35.09.96-53.15-2.2l-30.38,46.44c-10.58,16.17-35.43,42.99-53.21,46.66-14.78,3.05-25.75-7-27.67-21.09-1.85-13.52,3.82-26.44,16.21-33.33ZM860.98,113.08c17.94-13.96,34.05-29.99,48.41-47.78l19.69-24.39c6.8-8.43,11.89-18.36,12.5-29.2.28-4.95-4.29-10.04-9.02-9.56-5.68.58-11.21,3.85-15.17,8.07-7.93,8.47-15,17.07-20.99,27.06l-27.68,46.21-23.31,40.35,15.57-10.77ZM212.07,244.34c26.7-54.03,54.74-105.79,87.77-155.48l17.98-27.06,4.57-6.9c-25.03,15.51-53.94,47.16-71.93,73.55l-93.39,136.98c10.52,18.1,14.31,37.73,15.37,58.72l39.62-79.79ZM576.85,291.25c4.68-5.02,7.02-9.8,10.2-15.49l48.57-87.13c1.72-3.08-.5-8.97-2.37-10.85-6.7-6.7-17.96,0-19.66,2.9l-78.87,134.65c1.15,5.25,11.5,2.97,17.61-1.16,9.39-6.35,16.65-14.47,24.53-22.93ZM924.95,175.41c-7.23-6.27-15.85,15.23-4.39,31.1,7.89-10.25,13.58-23.13,4.39-31.1ZM280,356.88c2.93,7.22,7.98,11.28,14.72,13.1,6.72-1.25,12.52-4.28,17.65-8.93,34.02-30.82,62.28-89.04,80.75-132.05.8-1.87,1.12-4.38,1.32-6,1.13-2.11,2.66-4.16,2.81-6.95l-70.07,85.83-12.44,14.69c7.95,7.6.41,19.7-9.02,25.93-4.26,2.81-9.17,2.81-13.88.95l-11.84,13.43ZM273.6,243.31c5.49-7.56,8.61-20.21,4.2-23.19-2.52-1.71-10.49,5.04-10.08,16.47.13,3.54,2.47,6.05,5.89,6.72ZM90.08,325.57l20.14,5.84,44.34-66.18c-14.21-23.4-44.04-42.64-71.37-41.39-14.56,1.54-26.69,8.42-35.12,20.15-5.52,7.68-10.34,16.6-10.16,26.57.46,25.26,28.95,48.27,52.16,55.01ZM169.27,332.7c2.1-22.47-2.1-44.82-13.5-65.3l-42.81,63.7c17.29,3.89,38.01,4.69,56.31,1.59ZM289.67,334.88l2.68,4.74,18.58-22.01c-17.9-5.41-33.56,18.64-31.75,36.39l11.28-12.05-.79-7.08ZM312.14,325.02c1.36-1.9,1.71-3.8.71-5.97l-18.49,21.54c4.42,3.23,12.56-8.24,17.78-15.56Z" fill="#fff"/><path d="M501.75,159.18c-5.56,1.91-12.15-.24-14.17-5.49-3.51-9.1,1.65-18.53,10.38-21.99,4.36-1.73,9.08-1.49,12.6,1.43s4.9,7.89,3.55,12.69c-1.72,6.08-5.84,11.12-12.36,13.37Z" fill="#fff"/></g></g></svg>', note: 'Sourdough & pastry', addr: '1070 Bridgeview Way',        ll: [37.775208, -122.388374] }
+  ];
+  var chipsEl = document.getElementById('chips');
+  stops.forEach(function (s) {
+    s.marker = L.marker(s.ll, {
+      icon: L.divIcon({ className: 'poi-marker', html: '<div class="poi-dot"></div><div class="poi ' + s.pos + '">' + s.logo.replace('<svg ', '<svg style="height:' + s.logoH + 'px" ') + '</div>', iconSize: [0, 0], iconAnchor: [0, 0], popupAnchor: [0, s.pos === 'above' ? -46 : -6] }),
+      title: s.name, zIndexOffset: 500
+    }).addTo(map).bindPopup('<strong>' + s.name + '</strong><span class="sub">' + s.note + ' &middot; ' + s.addr + '</span>');
+
+    var chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.textContent = s.chip;
+    chip.addEventListener('click', function () {
+      map.closePopup();
+      map.flyTo(s.ll, 17, { duration: 0.8 });
+      map.once('moveend', function () { s.marker.openPopup(); });
+    });
+    chipsEl.appendChild(chip);
+  });
+
+  /* ================= Route drawing + animation ================= */
+  var routeLayer = L.layerGroup().addTo(map);
+  var segLayers = [], traveler = null, rafId = null;
+
+  function styleFor(kind, hot) {
+    return kind === 'walk'
+      ? { color: '#fff', weight: hot ? 5 : 3, opacity: hot ? 1 : 0.85, dashArray: '1 8', lineCap: 'round' }
+      : { color: ACCENT, weight: hot ? 8 : 5, opacity: 1, lineCap: 'round', lineJoin: 'round' };
+  }
+
+  function lengths(pts) {
+    var d = [0];
+    for (var i = 1; i < pts.length; i++) d.push(d[i - 1] + map.distance(pts[i - 1], pts[i]));
+    return d;
+  }
+
+  function pointAt(seg, frac) {
+    var pts = seg.pts, cum = seg.cum, target = cum[cum.length - 1] * Math.max(0, Math.min(1, frac));
+    for (var i = 1; i < pts.length; i++) {
+      if (cum[i] >= target) {
+        var span = cum[i] - cum[i - 1], f = span ? (target - cum[i - 1]) / span : 0;
+        return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * f, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * f];
+      }
+    }
+    return pts[pts.length - 1];
+  }
+
+  function animate(d) {
+    if (rafId) cancelAnimationFrame(rafId);
+    var segs = d.segs, end = segs[segs.length - 1].pts.slice(-1)[0];
+    if (reduceMotion) { traveler.setLatLng(end); return; }
+    var totalMin = 0; segs.forEach(function (s) { totalMin += s.min; });
+    var RUN = 7000, HOLD = 1400, start = null;
+    function frame(ts) {
+      if (start === null) start = ts;
+      var t = (ts - start) % (RUN + HOLD), p = Math.min(t / RUN, 1), m = p * totalMin, acc = 0;
+      if (p >= 1) { traveler.setLatLng(end); }
+      else {
+        for (var i = 0; i < segs.length; i++) {
+          if (m <= acc + segs[i].min) { traveler.setLatLng(pointAt(segs[i], (m - acc) / segs[i].min)); break; }
+          acc += segs[i].min;
+        }
+      }
+      rafId = requestAnimationFrame(frame);
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function showDirection(key) {
+    var d = DIRS[key];
+    routeLayer.clearLayers(); segLayers = [];
+    d.segs.forEach(function (s) {
+      s.cum = lengths(s.pts);
+      if (s.kind === 'ride') L.polyline(s.pts, { color: '#000', weight: 10, opacity: 0.45, lineCap: 'round', lineJoin: 'round' }).addTo(routeLayer);
+      segLayers.push(L.polyline(s.pts, styleFor(s.kind, false)).addTo(routeLayer));
+    });
+    traveler = L.circleMarker(d.segs[0].pts[0], {
+      pane: 'traveler', radius: 8, color: '#111', weight: 3, fillColor: '#fff', fillOpacity: 1, interactive: false
+    }).addTo(routeLayer);
+
+    document.getElementById('total').textContent = d.total;
+    var ul = document.getElementById('steps');
+    ul.innerHTML = '';
+    d.steps.forEach(function (st) {
+      var kind = d.segs[st.seg].kind;
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="sw ' + kind + '"></span><span>' + st.text + '</span>';
+      li.addEventListener('mouseenter', function () { segLayers[st.seg].setStyle(styleFor(kind, true)); });
+      li.addEventListener('mouseleave', function () { segLayers[st.seg].setStyle(styleFor(kind, false)); });
+      ul.appendChild(li);
+    });
+
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+      var on = tabs[i].getAttribute('data-dir') === key;
+      tabs[i].classList.toggle('active', on);
+      tabs[i].setAttribute('aria-selected', on);
+    }
+    animate(d);
+  }
+
+  /* ================= Framing ================= */
+  var panel = document.getElementById('panel');
+  var allPts = walkHoward.concat(rideT, walkMB);
+  function fit(animateMove) {
+    var narrow = map.getSize().x <= 640;
+    var opts = narrow
+      ? { paddingTopLeft: [40, 60], paddingBottomRight: [40, panel.offsetHeight + 40] }
+      : { paddingTopLeft: [panel.offsetWidth + 70, 70], paddingBottomRight: [70, 70] };
+    opts.maxZoom = 16;
+    opts.animate = !!animateMove;
+    map.fitBounds(allPts, opts);
+  }
+
+  var tabEls = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabEls.length; i++) {
+    tabEls[i].addEventListener('click', function () {
+      map.closePopup();
+      showDirection(this.getAttribute('data-dir'));
+      fit(true);
+    });
+  }
+
+  // Keep panel clicks from reaching the map
+  L.DomEvent.disableClickPropagation(panel);
+  L.DomEvent.disableScrollPropagation(panel);
+
+  fit(false);
+  showDirection('h2m');
+  window.addEventListener('resize', function () { map.invalidateSize(); fit(false); });
+</script>
+</body>
+</html>
