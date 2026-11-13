@@ -87,6 +87,7 @@
   .leaflet-popup-content .sub { color: #aaa; font-size: 13px; }
   .leaflet-container a.leaflet-popup-close-button { color: #aaa; }
   .leaflet-control-attribution { background: rgba(0,0,0,.55) !important; color: #888; }
+  .osm-dark { filter: grayscale(1) invert(1) brightness(.85) contrast(.9); }
   .leaflet-control-attribution a { color: #aaa; }
 
   /* ---- Commute panel ---- */
@@ -169,16 +170,30 @@
     try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); }
     catch (e) { return false; }
   }
-  if (L.maplibreGL && hasWebGL()) {
+  // Phones and tablets get lightweight image tiles instead of the WebGL (MapLibre) map:
+  // WebGL inside an iframe inside Ceros uses enough memory that iPhone Safari can crash the page.
+  var isTouchDevice = window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 820px)').matches;
+  if (!isTouchDevice && L.maplibreGL && hasWebGL()) {
     L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + OFM_STYLE }).addTo(map);
     // Added directly: this plugin version doesn't pass its credit line to Leaflet
     map.attributionControl.addAttribution('<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>');
   } else {
-    // Backup for browsers without WebGL: Esri Dark Gray Canvas (also no key)
+    // Phones/tablets (and browsers without WebGL): Esri Dark Gray Canvas image tiles, no key.
+    // If Esri refuses tiles, switch to OpenStreetMap tiles darkened with a CSS filter.
     var ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
     var esriAttr = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors';
-    L.tileLayer(ESRI + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution: esriAttr, maxNativeZoom: 16, maxZoom: 19 }).addTo(map);
-    L.tileLayer(ESRI + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 16, maxZoom: 19 }).addTo(map);
+    var esriBase = L.tileLayer(ESRI + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution: esriAttr, maxNativeZoom: 16, maxZoom: 19 }).addTo(map);
+    var esriLabels = L.tileLayer(ESRI + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 16, maxZoom: 19 }).addTo(map);
+    var tileErrors = 0, switched = false;
+    esriBase.on('tileerror', function () {
+      if (switched || ++tileErrors < 4) return;
+      switched = true;
+      map.removeLayer(esriBase); map.removeLayer(esriLabels);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        className: 'osm-dark', maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+      }).addTo(map);
+    });
   }
 
   // Scroll-zoom only after a click, so the map doesn't hijack page scrolling in Ceros
@@ -298,7 +313,16 @@
 
   /* ================= Route drawing + animation ================= */
   var routeLayer = L.layerGroup().addTo(map);
-  var segLayers = [], traveler = null, rafId = null;
+  var segLayers = [], traveler = null, rafId = null, currentDir = null;
+  var mapOnScreen = true;
+  function resumeIfNeeded() { if (mapOnScreen && !document.hidden && !rafId && currentDir) animate(DIRS[currentDir]); }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      mapOnScreen = entries[0].isIntersecting;
+      resumeIfNeeded();
+    }).observe(document.getElementById('map'));
+  }
+  document.addEventListener('visibilitychange', resumeIfNeeded);
 
   function styleFor(kind, hot) {
     return kind === 'walk'
@@ -330,6 +354,7 @@
     var totalMin = 0; segs.forEach(function (s) { totalMin += s.min; });
     var RUN = 7000, HOLD = 1400, start = null;
     function frame(ts) {
+      if (!mapOnScreen || document.hidden) { rafId = null; return; }   // paused; resumeIfNeeded() restarts it
       if (start === null) start = ts;
       var t = (ts - start) % (RUN + HOLD), p = Math.min(t / RUN, 1), m = p * totalMin, acc = 0;
       if (p >= 1) { traveler.setLatLng(end); }
@@ -374,6 +399,7 @@
       tabs[i].classList.toggle('active', on);
       tabs[i].setAttribute('aria-selected', on);
     }
+    currentDir = key;
     animate(d);
   }
 
@@ -405,7 +431,16 @@
 
   fit(false);
   showDirection('h2m');
-  window.addEventListener('resize', function () { map.invalidateSize(); fit(false); });
+  // Only re-frame when the width really changes. Phones fire height-only "resizes" constantly while
+  // scrolling (address bar showing/hiding); re-framing on each of those caused a storm of redraws.
+  var lastWidth = window.innerWidth, resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      map.invalidateSize({ pan: false });
+      if (Math.abs(window.innerWidth - lastWidth) > 40) { lastWidth = window.innerWidth; fit(false); }
+    }, 250);
+  });
 </script>
 </body>
 </html>
